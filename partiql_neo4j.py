@@ -258,8 +258,8 @@ def execute_neo4j(uri, user, passwd, cypher):
         # neo_record is an instance of Node or Relationship class
         record = []
         for key in neo_record.keys():
-            # not object case: string
-            if type(neo_record[key]) == str :
+            # not object case: string or integer or float
+            if type(neo_record[key]) == str or type(neo_record[key]) == int  or type(neo_record[key]) == float :
                 record.append(neo_record[key])
             # object case
             else :

@@ -16,6 +16,7 @@ metadata = {
 #sql_str = "SELECT jenn.name, jenn.name FROM Person AS jenn"
 #sql_str = "SELECT jenn FROM Person AS jenn WHERE jenn.name = 'Jennifer'"
 sql_str = "SELECT company.name FROM Person AS p, p.WORKS_FOR AS company WHERE p.name = 'Jennifer'"
+#sql_str = "SELECT Person, Person.name FROM Person"
 
 # Query execution sample
 pn = partiql_neo4j.PartiqlNeo4j(metadata)
@@ -28,6 +29,7 @@ print(ast)
 query = pn.ast_to_string_sql(ast)
 print(query)
 cypher_str = pn.ast_to_string_cypher(ast)
+##cypher_str = "match (n)-[:LIKES]->(m) where id(n) = 0 return id(m)" # for test
 print(cypher_str)
 
 # cypher execute example

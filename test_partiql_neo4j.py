@@ -44,6 +44,12 @@ import partiql_neo4j
         ],
         "MATCH (p:Person)-[:WORKS_FOR]->(company:Company) WHERE p.name = 'Jennifer' RETURN company.name AS column1",
         [['Neo4j']]
+    ),
+    (
+        "SELECT Person, Person.name FROM Person",
+        ['select', ['project', ['list', ['id', 'Person'], ['id', 'Person.name']]], ['from', ['as', 'Person', ['id', 'Person']]]],
+        "MATCH (Person:Person) RETURN Person AS column1,Person.name AS column2",
+        [[{'name': 'Jennifer'}, 'Jennifer'], [{'name': 'Michael'}, 'Michael']]
     )
 ])
 
