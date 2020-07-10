@@ -268,6 +268,6 @@ def execute_neo4j(uri, user, passwd, cypher):
                 for item in neo_record[key].items():
                     columns_obj[item[0]] = item[1]
                 record.append(columns_obj)
-        result.append(record)
+        result.append(tuple(record))
     session.close()
     return result

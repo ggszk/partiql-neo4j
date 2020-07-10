@@ -10,25 +10,25 @@ import partiql_neo4j
         "SELECT p FROM Person AS p",
         ['select', ['project', ['list', ['id', 'p']]], ['from', ['as', 'p', ['id', 'Person']]]],
         "MATCH (p:Person) RETURN p AS column1",
-        [[{'name': 'Jennifer'}], [{'name': 'Michael'}]]
+        [({'name': 'Jennifer'},), ({'name': 'Michael'},)]
     ),
     (
         "SELECT Person FROM Person",
         ['select', ['project', ['list', ['id', 'Person']]], ['from', ['as', 'Person', ['id', 'Person']]]],
         "MATCH (Person:Person) RETURN Person AS column1",
-        [[{'name': 'Jennifer'}], [{'name': 'Michael'}]]
+        [({'name': 'Jennifer'},), ({'name': 'Michael'},)]
     ),
     (
         "SELECT jenn.name, jenn.name FROM Person AS jenn",
         ['select', ['project', ['list', ['id', 'jenn.name'], ['id', 'jenn.name']]], ['from', ['as', 'jenn', ['id', 'Person']]]],
         "MATCH (jenn:Person) RETURN jenn.name AS column1,jenn.name AS column2",
-        [['Jennifer', 'Jennifer'], ['Michael', 'Michael']]
+        [('Jennifer', 'Jennifer'), ('Michael', 'Michael')]
     ),
     (
         "SELECT jenn FROM Person AS jenn WHERE jenn.name = 'Jennifer'",
         ['select', ['project', ['list', ['id', 'jenn']]], ['from', ['as', 'jenn', ['id', 'Person']]], ['where', "jenn.name = 'Jennifer'"]],
         "MATCH (jenn:Person) WHERE jenn.name = 'Jennifer' RETURN jenn AS column1",
-        [[{'name': 'Jennifer'}]]
+        [({'name': 'Jennifer'},)]
     ),
     (
         "SELECT company.name FROM Person AS p, p.WORKS_FOR AS company WHERE p.name = 'Jennifer'",
@@ -43,13 +43,13 @@ import partiql_neo4j
             ['where', "p.name = 'Jennifer'"]
         ],
         "MATCH (p:Person)-[:WORKS_FOR]->(company:Company) WHERE p.name = 'Jennifer' RETURN company.name AS column1",
-        [['Neo4j']]
+        [('Neo4j',)]
     ),
     (
         "SELECT Person, Person.name FROM Person",
         ['select', ['project', ['list', ['id', 'Person'], ['id', 'Person.name']]], ['from', ['as', 'Person', ['id', 'Person']]]],
         "MATCH (Person:Person) RETURN Person AS column1,Person.name AS column2",
-        [[{'name': 'Jennifer'}, 'Jennifer'], [{'name': 'Michael'}, 'Michael']]
+        [({'name': 'Jennifer'}, 'Jennifer'), ({'name': 'Michael'}, 'Michael')]
     )
 ])
 

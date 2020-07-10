@@ -8,7 +8,8 @@ passwd = "neo4jneo4j"
 # Metadata of Neo4j graph database
 metadata = {
     'relationships' :[
-        {'from' : 'Person', 'to' : 'Company', 'type' : 'WORKS_FOR'}
+        {'from' : 'Person', 'to' : 'Company', 'type' : 'WORKS_FOR'},
+        {'from' : 'employeesWithTuples', 'to' : 'project', 'type' : 'project'}
     ]
 }
 #sql_str = "SELECT p FROM Person AS p"
@@ -17,6 +18,7 @@ metadata = {
 #sql_str = "SELECT jenn FROM Person AS jenn WHERE jenn.name = 'Jennifer'"
 sql_str = "SELECT company.name FROM Person AS p, p.WORKS_FOR AS company WHERE p.name = 'Jennifer'"
 #sql_str = "SELECT Person, Person.name FROM Person"
+#sql_str = "SELECT e.name AS employeeName, e.project.name AS projectName FROM employeesWithTuples e WHERE e.project.org = 'AWS'" # to be implemented...
 
 # Query execution sample
 pn = partiql_neo4j.PartiqlNeo4j(metadata)
