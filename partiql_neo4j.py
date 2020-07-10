@@ -11,7 +11,7 @@
 # - and many...
 
 import sys
-from neo4j import GraphDatabase
+from jdb_st_Neo4j import Neo4j
 
 # Main Class
 class PartiqlNeo4j:
@@ -247,27 +247,9 @@ def find_target_node_label(from_node, relationship_type, metadata) :
 
 # Execute Neo4j
 def execute_neo4j(uri, user, passwd, cypher):
-    driver = GraphDatabase.driver(uri, auth=(user, passwd))
-    session = driver.session()
-    neo_result = session.run(cypher)
-
-    # result for return: list of dict
-    result = []
-
-    for neo_record in neo_result:
-        # neo_record is an instance of Node or Relationship class
-        record = []
-        for key in neo_record.keys():
-            # not object case: string or integer or float
-            if type(neo_record[key]) == str or type(neo_record[key]) == int  or type(neo_record[key]) == float :
-                record.append(neo_record[key])
-            # object case
-            else :
-                columns_obj = {}
-                # Python Driver returns a pair of an attribute and a values as 'tuple'!! (as not dict) (items() returns tuples)
-                for item in neo_record[key].items():
-                    columns_obj[item[0]] = item[1]
-                record.append(columns_obj)
-        result.append(tuple(record))
-    session.close()
-    return result
+    neo4j = Neo4j({
+            'uri' : uri,
+            'user' : user,
+            'passwd' : passwd,
+    })
+    return neo4j.executeQuery(cypher)
