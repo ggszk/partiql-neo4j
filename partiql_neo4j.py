@@ -7,11 +7,9 @@
 # Sorry for using deprecated specification for simple implementation (current version is V1)
 #
 # Many restrictions of PartiQL
-# - no space in project list (NG: select a, b from T, OK: select a,b from T)
-# - and many...
 
 import sys
-from jdb_st_Neo4j import Neo4j
+from Neo4j import Neo4j
 
 # Main Class
 class PartiqlNeo4j:
