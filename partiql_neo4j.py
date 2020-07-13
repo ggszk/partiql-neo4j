@@ -7,6 +7,7 @@
 # Sorry for using deprecated specification for simple implementation (current version is V1)
 #
 # Many restrictions of PartiQL
+# Restriction: only one function is supported
 
 import sys
 from Neo4j import Neo4j
@@ -65,9 +66,43 @@ def parse(sql_str) :
         sys.exit(1)
 
     project_expr = ['list']
-    project_words = ''.join(sql_words[1:from_idx]).split(',')
-    for project_word in project_words :
-        project_expr.append(['id', project_word])
+    project_words_str = ''.join(sql_words[1:from_idx])
+    # analyze function
+    ft_temp_words1 = project_words_str.split('(')
+    # Restriction: only one function is supported
+    if len(ft_temp_words1) > 2 :
+        print('Syntax error : only one function is supported', file=sys.stderr)
+        sys.exit(1)
+    # function found
+    elif len(ft_temp_words1) == 2 :
+        ft_temp_words2 = ft_temp_words1[1].split(')')
+        if len(ft_temp_words2) == 1 :
+            print('Syntax error : function format error ', file=sys.stderr)
+            sys.exit(1)
+        ft_temp_words3 = ft_temp_words1[0].split(',')
+        function_name = ft_temp_words3[-1]
+        project_words_pre = ft_temp_words3[0:-1]
+        project_words_post = (ft_temp_words2[1].split(','))[1:]
+        function_parameters = ft_temp_words2[0].split(',')
+        parameter_expr = ['list']
+        for param in function_parameters :
+            # literal check
+            if param[0] == "'" and param[-1] == "'" :
+                parameter_expr.append(['lit', param])
+            else :
+                parameter_expr.append(['id', param])
+        function_expr = ['call', function_name, parameter_expr]
+        # construct project expression
+        for project_word in project_words_pre :
+            project_expr.append(['id', project_word])
+        project_expr.append(function_expr)
+        for project_word in project_words_post :
+            project_expr.append(['id', project_word])
+    # function not found
+    else :
+        project_words = project_words_str.split(',')
+        for project_word in project_words :
+            project_expr.append(['id', project_word])
 
     # find where
     where_idx = len(sql_words) # if there is no where, where_idx = len(sql_words)
@@ -181,32 +216,36 @@ def to_string_cypher(ast, metadata):
     # join
     elif ast[2][1][0] == 'inner_join' :
         # analyze relationship
+        # no relationship. cartesian product case
+        if ast[2][1][1][2][0] != 'path' and ast[2][1][2][2][0] != 'path' :
+            match_str = "MATCH " + source_expr_to_cy_string(ast[2][1][1]) + ", " + source_expr_to_cy_string(ast[2][1][2])
         # source_expr with "path" will be target node
         # the other source_expr will be source node
-        if ast[2][1][1][2][0] == 'path' :
-            tatget_source_expr = ast[2][1][1]
-            source_source_expr = ast[2][1][2]
-        elif ast[2][1][2][2][0] == 'path' :
-            tatget_source_expr = ast[2][1][2]
-            source_source_expr = ast[2][1][1]
         else :
-            print("relationship analyze error : not yet support", file=sys.stderr)
-            sys.exit(1)
-        # check same variable is used for source node
-        if tatget_source_expr[2][1][1] != source_source_expr[1] :
-            print("relationship analyze error: inconsistent from clauses", file=sys.stderr)
-            sys.exit(1)
-        # check the existence of relationship between taget and source
-        relationhip_type = tatget_source_expr[2][2][1]
-        source_node_label = source_source_expr[2][1]
-        target_node_label = find_target_node_label(source_node_label, relationhip_type, metadata)
-        if target_node_label == "" :
-            print('no relationship found ', file=sys.stderr)
-            sys.exit(1)
-        # simplifed target
-        simplified_target_source_expr = ['as', tatget_source_expr[1], ['id', target_node_label]]
+            if ast[2][1][1][2][0] == 'path' :
+                tatget_source_expr = ast[2][1][1]
+                source_source_expr = ast[2][1][2]
+            elif ast[2][1][2][2][0] == 'path' :
+                tatget_source_expr = ast[2][1][2]
+                source_source_expr = ast[2][1][1]
+            else :
+                print("relationship analyze error : not yet support", file=sys.stderr)
+                sys.exit(1)
+            # check same variable is used for source node
+            if tatget_source_expr[2][1][1] != source_source_expr[1] :
+                print("relationship analyze error: inconsistent from clauses", file=sys.stderr)
+                sys.exit(1)
+            # check the existence of relationship between taget and source
+            relationhip_type = tatget_source_expr[2][2][1]
+            source_node_label = source_source_expr[2][1]
+            target_node_label = find_target_node_label(source_node_label, relationhip_type, metadata)
+            if target_node_label == "" :
+                print('no relationship found ', file=sys.stderr)
+                sys.exit(1)
+            # simplifed target
+            simplified_target_source_expr = ['as', tatget_source_expr[1], ['id', target_node_label]]
 
-        match_str = "MATCH " + source_expr_to_cy_string(source_source_expr) + "-[:" + relationhip_type + "]->" + source_expr_to_cy_string(simplified_target_source_expr)
+            match_str = "MATCH " + source_expr_to_cy_string(source_source_expr) + "-[:" + relationhip_type + "]->" + source_expr_to_cy_string(simplified_target_source_expr)
 
     cypher = match_str
 
@@ -217,15 +256,48 @@ def to_string_cypher(ast, metadata):
 
     # return
     return_str = "RETURN "
+    call_str = ""
     i = 0
+    column_id = 1 # No of columns
     for list_item in ast[1][1] :
-        if i != 0 :
-            # to avoid cypher restriction : Multiple result columns with the same name are not supported 
-            return_str = return_str + list_item[1] + " AS column" + str(i) + ","
-        i = i + 1
-    return_str = return_str[:-1] # cut last ","
+        if i != 0 : # skip 'list'
+            # function case : create CALL clause
+            if list_item[0] == "call" :
+                # find function in metadata
+                func_name = ""
+                for func in metadata['functions'] :
+                    if func['name'] == list_item[1] :
+                        # get function information from metadata
+                        func_name = func['original_name']
+                        func_result_params = func['parameters']
+                if func_name == "" :
+                    print("no such function in metadata", file=sys.stderr)
+                    sys.exit(1)
+                call_str = "CALL " + func_name + "("
+                j = 0
+                for param in list_item[2] :
+                    if j != 0 : # skip 'list'
+                        call_str = call_str + param[1] + ", "
+                    j = j + 1
+                call_str = call_str[:-2] + ") " # cut last ","
+                # yield clause
+                call_str =  call_str + "YIELD "
+                for result_param in func_result_params :
+                     call_str = call_str + result_param + " AS " + result_param + ", "
+                call_str = call_str[:-2] + " "# cut last ","
 
-    cypher = cypher + " " + return_str #+ ";"
+                # add result columns
+                for result_param in func_result_params :
+                    return_str = return_str + result_param + " AS column" + str(column_id) + ", "
+                    column_id = column_id + 1
+            # to avoid cypher restriction : Multiple result columns with the same name are not supported
+            else :
+                return_str = return_str + list_item[1] + " AS column" + str(column_id) + ", "
+                column_id = column_id + 1
+        i = i + 1
+    return_str = return_str[:-2] # cut last ", "
+
+    cypher = cypher + " " + call_str + return_str
 
     return cypher
 
