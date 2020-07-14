@@ -32,25 +32,6 @@ pn = partiql_neo4j.PartiqlNeo4j(metadata)
 # Parse and translation example
 ast = pn.partiql_parse(sql_str)
 print(ast)
-ast_answer = [
-    'select', 
-        ['project', 
-            ['list', 
-                ['id', 'from_node.n_id'],
-                ['call', 'dijkstra', ['list', ['id', 'from_node'], ['id', 'to_node'], ['lit', "'CONNECT_TO'"], ['lit', "'cost'"]]],
-                ['id', 'to_node.n_id']
-            ]
-        ],
-        ['from', 
-            ['inner_join', 
-                ['as', 'from_node', ['id', 'g2']], 
-                ['as', 'to_node',  ['id', 'g2']]
-            ]
-        ],
-        ['where', "from_node.n_id = 0 and to_node.n_id = 8"]
-]
-cypher_answer = "MATCH (from_node:g2), (to_node:g2) WHERE from_node.n_id = 0 and to_node.n_id = 8 CALL apoc.algo.dijkstra(from_node, to_node, 'CONNECT_TO', 'cost') yield path as path, weight as weight RETURN path, weight"
-
 query = pn.ast_to_string_sql(ast)
 print(query) # sql translation don't pass function pattern
 cypher_str = pn.ast_to_string_cypher(ast)
