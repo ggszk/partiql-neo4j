@@ -20,45 +20,45 @@ import partiql_neo4j
     ),
     (
         "SELECT jenn.name, jenn.name FROM Person AS jenn",
-        ['select', ['project', ['list', ['id', 'jenn.name'], ['id', 'jenn.name']]], ['from', ['as', 'jenn', ['id', 'Person']]]],
+        ['select', ['project', ['list', ['path', ['id', 'jenn'], ['id', 'name']], ['path', ['id', 'jenn'], ['id', 'name']]]], ['from', ['as', 'jenn', ['id', 'Person']]]],
         "MATCH (jenn:Person) RETURN jenn.name AS column1, jenn.name AS column2",
         [('Jennifer', 'Jennifer'), ('Michael', 'Michael')]
     ),
     (
         "SELECT jenn FROM Person AS jenn WHERE jenn.name = 'Jennifer'",
-        ['select', ['project', ['list', ['id', 'jenn']]], ['from', ['as', 'jenn', ['id', 'Person']]], ['where', "jenn.name = 'Jennifer'"]],
+        ['select', ['project', ['list', ['id', 'jenn']]], ['from', ['as', 'jenn', ['id', 'Person']]], ['where', ['=', ['path', ['id', 'jenn'], ['id', 'name']], ['lit', "'Jennifer'"]]]],
         "MATCH (jenn:Person) WHERE jenn.name = 'Jennifer' RETURN jenn AS column1",
         [({'name': 'Jennifer'},)]
     ),
     (
         "SELECT company.name FROM Person AS p, p.WORKS_FOR AS company WHERE p.name = 'Jennifer'",
         ['select', 
-            ['project', ['list', ['id', 'company.name']]], 
+            ['project', ['list', ['path', ['id', 'company'], ['id', 'name']]]], 
             ['from', 
                 ['inner_join', 
                     ['as', 'p', ['id', 'Person']], 
                     ['as', 'company', ['path', ['id', 'p'], ['id', 'WORKS_FOR']]]
                 ]
             ],
-            ['where', "p.name = 'Jennifer'"]
+            ['where', ['=', ['path', ['id', 'p'], ['id', 'name']], ['lit', "'Jennifer'"]]]
         ],
         "MATCH (p:Person)-[:WORKS_FOR]->(company:Company) WHERE p.name = 'Jennifer' RETURN company.name AS column1",
         [('Neo4j',)]
     ),
     (
         "SELECT Person, Person.name FROM Person",
-        ['select', ['project', ['list', ['id', 'Person'], ['id', 'Person.name']]], ['from', ['as', 'Person', ['id', 'Person']]]],
+        ['select', ['project', ['list', ['id', 'Person'], ['path', ['id', 'Person'], ['id', 'name']]]], ['from', ['as', 'Person', ['id', 'Person']]]],
         "MATCH (Person:Person) RETURN Person AS column1, Person.name AS column2",
         [({'name': 'Jennifer'}, 'Jennifer'), ({'name': 'Michael'}, 'Michael')]
     ),
     (
-        "SELECT from_node.n_id, dijkstra(from_node, to_node, 'CONNECT_TO', 'cost'), to_node.n_id FROM g2 AS from_node, g2 AS to_node WHERE from_node.n_id = 0 and to_node.n_id = 8",
+        "SELECT from_node.n_id, dijkstra(from_node, to_node, 'CONNECT_TO', 'cost'), to_node.n_id FROM g2 AS from_node, g2 AS to_node WHERE from_node.n_id = 0 AND to_node.n_id = 8",
         ['select', 
             ['project', 
                 ['list', 
-                    ['id', 'from_node.n_id'],
+                    ['path', ['id', 'from_node'], ['id', 'n_id']],
                     ['call', 'dijkstra', ['list', ['id', 'from_node'], ['id', 'to_node'], ['lit', "'CONNECT_TO'"], ['lit', "'cost'"]]],
-                    ['id', 'to_node.n_id']
+                    ['path', ['id', 'to_node'], ['id', 'n_id']]
                 ]
             ],
             ['from', 
@@ -67,7 +67,12 @@ import partiql_neo4j
                     ['as', 'to_node',  ['id', 'g2']]
                 ]
             ],
-            ['where', "from_node.n_id = 0 and to_node.n_id = 8"]
+            ['where', 
+                ['and', 
+                    ['=', ['path', ['id', 'from_node'], ['id', 'n_id']], ['lit', 0]], 
+                    ['=', ['path', ['id', 'to_node'], ['id', 'n_id']], ['lit', 8]]
+                ]
+            ]
         ],
         "MATCH (from_node:g2), (to_node:g2) WHERE from_node.n_id = 0 and to_node.n_id = 8 CALL apoc.algo.dijkstra(from_node, to_node, 'CONNECT_TO', 'cost') YIELD path AS path, weight AS weight RETURN from_node.n_id AS column1, path AS column2, weight AS column3, to_node.n_id AS column4",
         [(0, [0, 1, 3, 5, 8], 12.0, 8)]

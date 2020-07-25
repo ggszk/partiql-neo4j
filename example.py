@@ -22,7 +22,7 @@ metadata = {
 #sql_str = "SELECT company.name FROM Person AS p, p.WORKS_FOR AS company WHERE p.name = 'Jennifer'"
 #sql_str = "SELECT Person, Person.name FROM Person"
 #sql_str = "SELECT e.name AS employeeName, e.project.name AS projectName FROM employeesWithTuples e WHERE e.project.org = 'AWS'" # to be implemented...
-sql_str = "SELECT from_node.n_id, dijkstra(from_node, to_node, 'CONNECT_TO', 'cost'), to_node.n_id FROM g2 AS from_node, g2 AS to_node WHERE from_node.n_id = 0 and to_node.n_id = 8"
+sql_str = "SELECT from_node.n_id, dijkstra(from_node, to_node, 'CONNECT_TO', 'cost'), to_node.n_id FROM g2 AS from_node, g2 AS to_node WHERE from_node.n_id = 0 AND to_node.n_id = 8"
 
 # Query execution sample
 pn = partiql_neo4j.PartiqlNeo4j(metadata)

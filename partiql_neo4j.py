@@ -7,10 +7,14 @@
 # Sorry for using deprecated specification for simple implementation (current version is V1)
 #
 # Many restrictions of PartiQL
-# Restriction: only one function is supported
 
+from lark import Lark
+from partiql_lang import Build_AST
 import sys
 from Neo4j import Neo4j
+
+ops = ['=', '!=', '>', '>=', '<', '<=']
+cons = ['and', 'or']
 
 # Main Class
 class PartiqlNeo4j:
@@ -21,213 +25,145 @@ class PartiqlNeo4j:
 
     # execute partiql query
     def execute_query(self, uri, user, passwd, query) :
-        ast = parse(query)
-        cypher_str = to_string_cypher(ast, self.metadata)
-        result = execute_neo4j(uri, user, passwd, cypher_str)
+        ast = self.partiql_parse(query)
+        cypher_str = self.ast_to_string_cypher(ast)
+        result = self.execute_neo4j(uri, user, passwd, cypher_str)
         return result
 
     # parse patriql to AST
     def partiql_parse(self, query) :
-        return parse(query)
+        rule = open('partiql_grammer.lark').read()
+        parser = Lark(rule, start="select", parser='lalr')
+        tree = parser.parse(query)
+        b = Build_AST()
+        ast = b.visit(tree)
+        return ast
     
     # AST to PartiQL
     def ast_to_string_sql(self, ast) :
-        return to_string_sql(ast)
+        return ast_to_sql(ast)
 
     # AST to Cypher
     def ast_to_string_cypher(self, ast) :
-        return to_string_cypher(ast, self.metadata)
+        return ast_to_cypher(ast, self.metadata)
 
     # execyte Cypher
     def execute_neo4j(self, uri, user, passwd, cypher_str) :
-        return execute_neo4j(uri, user, passwd, cypher_str)
+        neo4j = Neo4j({
+                'uri' : uri,
+                'user' : user,
+                'passwd' : passwd,
+        })
+        return neo4j.executeQuery(cypher_str)
 
-# Parse PatriQL to AST
-def parse(sql_str) :
-    sql_words = sql_str.split()
+# construct SQL
+def ast_to_sql(ast) :
+    ret_str = ""
+    if ast[0] == "select" :
+        ret_str = "select " + ast_to_sql(ast[1]) + ast_to_sql(ast[2]) 
+        # where clause
+        if len(ast) > 3 :
+            ret_str = ret_str + ast_to_sql(ast[3]) 
+    elif ast[0] == 'project' :
+        ret_str = ast_to_sql(ast[1])
+    elif ast[0] == 'list' :
+        i = 0
+        for c in ast :
+            if i > 0 :
+                ret_str = ret_str + ast_to_sql(c) + ", "
+            i = i + 1
+        ret_str = ret_str[:-2]
+    elif ast[0] == 'call' :
+        ret_str = ast[1] + "(" + ast_to_sql(ast[2]) + ")"
+    elif ast[0] == 'from' :
+        ret_str = " from " + ast_to_sql(ast[1])
+    elif ast[0] == 'as' :
+        ret_str = ast_to_sql(ast[2]) + " as " + ast[1]
+    elif ast[0] == 'inner_join' :
+        ret_str = ast_to_sql(ast[1]) + ", " + ast_to_sql(ast[2])    
+    elif ast[0] == 'where' :
+        ret_str = " where " + ast_to_sql(ast[1])
+    elif ast[0] in ops or ast[0] in cons:
+        ret_str = ast_to_sql(ast[1]) + " " + ast[0] + " " + ast_to_sql(ast[2])
+    elif ast[0] == 'path' :
+        ret_str = ast_to_sql(ast[1]) + "." + ast_to_sql(ast[2])
+    elif ast[0] == 'lit' :
+        if type(ast[1]) == int :
+            ret_str = str(ast[1])
+        else :
+            ret_str = ast[1]
+    elif ast[0] == 'id' :
+        ret_str = ast[1]
+    return ret_str
 
-    # Very very simple syntax check
-    # - 1st word must be 'SELECT'
-    if sql_words[0].lower() != 'select' :
-        print('Syntax error : missing select', file=sys.stderr)
-        sys.exit(1)
-
-    # project
-    # find from
-    from_idx = -1
-    i = 0
-    for word in sql_words :
-        if word.lower() == "from" : 
-            from_idx = i
-        i = i + 1
-    # no from
-    if from_idx == -1 :
-        print('Syntax error : missing from', file=sys.stderr)
-        sys.exit(1)
-
-    project_expr = ['list']
-    project_words_str = ''.join(sql_words[1:from_idx])
-    # analyze function
-    ft_temp_words1 = project_words_str.split('(')
-    # Restriction: only one function is supported
-    if len(ft_temp_words1) > 2 :
-        print('Syntax error : only one function is supported', file=sys.stderr)
-        sys.exit(1)
-    # function found
-    elif len(ft_temp_words1) == 2 :
-        ft_temp_words2 = ft_temp_words1[1].split(')')
-        if len(ft_temp_words2) == 1 :
-            print('Syntax error : function format error ', file=sys.stderr)
+# construct Cypher
+def ast_to_cypher(ast, metadata) :
+    ret_str = ""
+    if ast[0] == "select" :
+        ret_str = "MATCH " + ast_to_cypher(ast[2], metadata)
+        # where clause
+        if len(ast) > 3 :
+            ret_str = ret_str + ast_to_cypher(ast[3], metadata) 
+        # return clause : list
+        i = 0
+        col_str = " RETURN "
+        column_id = 1 # No of columns
+        for c in ast[1][1] :
+            # to avoid cypher restriction : Multiple result columns with the same name are not supported
+            if c[0] == 'call' :
+                call_str = " CALL " + ast_to_cypher(c, metadata)[0]
+                yield_str = " YIELD "
+                for p in ast_to_cypher(c, metadata)[1] :
+                    yield_str = yield_str + p + " AS " + p + ", "
+                col_str = call_str + yield_str[:-2] + col_str
+                for p in ast_to_cypher(c, metadata)[1] :
+                    col_str = col_str + p + " AS column" + str(column_id) + ", "
+                    column_id = column_id + 1
+            elif i != 0 :
+                col_str = col_str + ast_to_cypher(c, metadata) + " AS column" + str(column_id) + ", "
+                column_id = column_id + 1
+            # function call
+            i = i + 1
+        ret_str = ret_str + col_str[:-2]
+    elif ast[0] == 'project' :
+        ret_str = ast_to_cypher(ast[1], metadata)
+    elif ast[0] == 'list' :
+        i = 0
+        for c in ast :
+            if i > 0 :
+                ret_str = ret_str + ast_to_cypher(c, metadata) + ", "
+            i = i + 1
+        ret_str = ret_str[:-2]
+    elif ast[0] == 'call' :
+        # find function from metadata
+        for func in metadata['functions'] :
+            if func['name'] == ast[1] :
+                # get function information from metadata
+                func_name = func['original_name']
+                func_result_params = func['parameters']
+        if func_name == "" :
+            print("no such function in metadata", file=sys.stderr)
             sys.exit(1)
-        ft_temp_words3 = ft_temp_words1[0].split(',')
-        function_name = ft_temp_words3[-1]
-        project_words_pre = ft_temp_words3[0:-1]
-        project_words_post = (ft_temp_words2[1].split(','))[1:]
-        function_parameters = ft_temp_words2[0].split(',')
-        parameter_expr = ['list']
-        for param in function_parameters :
-            # literal check
-            if param[0] == "'" and param[-1] == "'" :
-                parameter_expr.append(['lit', param])
-            else :
-                parameter_expr.append(['id', param])
-        function_expr = ['call', function_name, parameter_expr]
-        # construct project expression
-        for project_word in project_words_pre :
-            project_expr.append(['id', project_word])
-        project_expr.append(function_expr)
-        for project_word in project_words_post :
-            project_expr.append(['id', project_word])
-    # function not found
-    else :
-        project_words = project_words_str.split(',')
-        for project_word in project_words :
-            project_expr.append(['id', project_word])
-
-    # find where
-    where_idx = len(sql_words) # if there is no where, where_idx = len(sql_words)
-    i = 0
-    for word in sql_words :
-        if word.lower() == "where" : 
-            where_idx = i
-        i = i + 1
-
-    # from
-    source_words = sql_words[from_idx+1:where_idx]
-    source_string = ' '.join(source_words)
-    source_table_strings = source_string.split(',')
-    source_tables = []
-    for source_table_string in source_table_strings :
-        source_tables.append(source_table_string.split())
-    source_expr = []
-
-    # from: single table
-    if len(source_tables) == 1 :
-        source_expr = create_single_source_expr(source_tables[0])
-    # from : multi table: only inner join of two tables
-    elif len(source_tables) == 2 :
-        source_expr = ['inner_join', create_single_source_expr(source_tables[0]), create_single_source_expr(source_tables[1])]
-    else :
-        print('Syntax error : sorry not to support 3 or above joins', file=sys.stderr)
-        sys.exit(1)
-
-    # AST without where clause
-    ast = ['select', ['project', project_expr], ['from', source_expr]]
-
-    # where
-    if where_idx != len(sql_words) : # there is where clause
-        cond_words = sql_words[where_idx+1:]
-        cond_expr = ' ' .join(cond_words) # ignore where clause parse
-        ast.append(['where', cond_expr])
-
-    return ast
-
-# check and normalize table pattern
-def create_single_source_expr(source_words) :
-    # parse path expression
-    path_strings = source_words[0].split('.')
-    if len(path_strings) > 1 :
-        path_expr = ['path', ['id', path_strings[0]], ['id', path_strings[1]]]
-    else :
-        path_expr = ['id' , source_words[0]]
-    # Normalize: if there is no 'AS' in the from clause, add 'AS'
-    if len(source_words) == 1 :
-        # last string of path is used for variable
-        source_expr = ['as', path_strings[-1], path_expr]
-    # there is AS
-    elif len(source_words) == 3 :
-        source_expr = ['as', source_words[2], path_expr]
-    # incompatible from clause
-    else :
-        print('Syntax error : from clause', file=sys.stderr)
-        sys.exit(1)
-    
-    return source_expr
-
-# serialize to sql
-def to_string_sql(ast) : 
-    # project
-    select_str = "SELECT "
-    project_str = ""
-    i = 0
-    for list_item in ast[1][1] :
-        if i != 0 :
-            project_str = project_str + list_item[1] + ","
-        i = i + 1
-    project_str = project_str[:-1]
-
-    # from
-    # not join
-    if ast[2][1][0] == 'as' :
-        from_str = "FROM " + source_expr_to_string(ast[2][1])
-    # join
-    elif ast[2][1][0] == 'inner_join' :
-        from_str = "FROM " + source_expr_to_string(ast[2][1][1]) + ", " + source_expr_to_string(ast[2][1][2])
-
-    sql = select_str + project_str + " " + from_str
-
-    # where
-    if len(ast) > 3 :
-        where_str = ast[3][1]
-        sql = sql + " WHERE " + where_str
-
-    return sql
-
-# source expr to string
-def source_expr_to_string(source_expr) :
-    source_string = ""
-    # not path
-    if source_expr[2][0] == 'id' :
-        source_string = source_expr[2][1] + " AS " + source_expr[1]
-    # path : only 2 depth
-    elif source_expr[2][0] == 'path' :
-        source_string = source_expr[2][1][1] + "." + source_expr[2][2][1] + " AS " + source_expr[1]
-    else :
-        print('to_string error : not supported', file=sys.stderr)
-        sys.exit(1)
-    return source_string
-
-# serialize to cypher
-def to_string_cypher(ast, metadata):
-    # match
-    # not join
-    if ast[2][1][0] == 'as' :
-        match_str = "MATCH " + source_expr_to_cy_string(ast[2][1])
-    # join
-    elif ast[2][1][0] == 'inner_join' :
+        # return tuple not string
+        ret_str = (func_name + "(" + ast_to_cypher(ast[2], metadata) + ")", func_result_params)
+    elif ast[0] == 'from' :
+        ret_str = ast_to_cypher(ast[1], metadata)
+    elif ast[0] == 'as' :
+        ret_str = "(" + ast[1] + ":" + ast_to_cypher(ast[2], metadata) + ")"
+    elif ast[0] == 'inner_join' :
         # analyze relationship
         # no relationship. cartesian product case
-        if ast[2][1][1][2][0] != 'path' and ast[2][1][2][2][0] != 'path' :
-            match_str = "MATCH " + source_expr_to_cy_string(ast[2][1][1]) + ", " + source_expr_to_cy_string(ast[2][1][2])
+        if ast[1][2][0] != 'path' and ast[2][2][0] != 'path' :
+            ret_str = ast_to_cypher(ast[1], metadata) + ", " + ast_to_cypher(ast[2], metadata)
         # source_expr with "path" will be target node
         # the other source_expr will be source node
         else :
-            if ast[2][1][1][2][0] == 'path' :
-                tatget_source_expr = ast[2][1][1]
-                source_source_expr = ast[2][1][2]
-            elif ast[2][1][2][2][0] == 'path' :
-                tatget_source_expr = ast[2][1][2]
-                source_source_expr = ast[2][1][1]
+            if ast[1][2][0] == 'path' :
+                tatget_source_expr = ast[1]
+                source_source_expr = ast[2]
+            elif ast[2][2][0] == 'path' :
+                tatget_source_expr = ast[2]
+                source_source_expr = ast[1]
             else :
                 print("relationship analyze error : not yet support", file=sys.stderr)
                 sys.exit(1)
@@ -244,68 +180,21 @@ def to_string_cypher(ast, metadata):
                 sys.exit(1)
             # simplifed target
             simplified_target_source_expr = ['as', tatget_source_expr[1], ['id', target_node_label]]
-
-            match_str = "MATCH " + source_expr_to_cy_string(source_source_expr) + "-[:" + relationhip_type + "]->" + source_expr_to_cy_string(simplified_target_source_expr)
-
-    cypher = match_str
-
-    # where
-    if len(ast) > 3 : # there is where clause
-        where_str = ast[3][1]
-        cypher = cypher + " WHERE " + where_str
-
-    # return
-    return_str = "RETURN "
-    call_str = ""
-    i = 0
-    column_id = 1 # No of columns
-    for list_item in ast[1][1] :
-        if i != 0 : # skip 'list'
-            # function case : create CALL clause
-            if list_item[0] == "call" :
-                # find function in metadata
-                func_name = ""
-                for func in metadata['functions'] :
-                    if func['name'] == list_item[1] :
-                        # get function information from metadata
-                        func_name = func['original_name']
-                        func_result_params = func['parameters']
-                if func_name == "" :
-                    print("no such function in metadata", file=sys.stderr)
-                    sys.exit(1)
-                call_str = "CALL " + func_name + "("
-                j = 0
-                for param in list_item[2] :
-                    if j != 0 : # skip 'list'
-                        call_str = call_str + param[1] + ", "
-                    j = j + 1
-                call_str = call_str[:-2] + ") " # cut last ","
-                # yield clause
-                call_str =  call_str + "YIELD "
-                for result_param in func_result_params :
-                     call_str = call_str + result_param + " AS " + result_param + ", "
-                call_str = call_str[:-2] + " "# cut last ","
-
-                # add result columns
-                for result_param in func_result_params :
-                    return_str = return_str + result_param + " AS column" + str(column_id) + ", "
-                    column_id = column_id + 1
-            # to avoid cypher restriction : Multiple result columns with the same name are not supported
-            else :
-                return_str = return_str + list_item[1] + " AS column" + str(column_id) + ", "
-                column_id = column_id + 1
-        i = i + 1
-    return_str = return_str[:-2] # cut last ", "
-
-    cypher = cypher + " " + call_str + return_str
-
-    return cypher
-
-# source expr to cypher string
-def source_expr_to_cy_string(source_expr) :
-    source_string = "(" + source_expr[1] + ":" + source_expr[2][1] + ")" 
-
-    return source_string
+            ret_str = source_expr_to_cy_string(source_source_expr) + "-[:" + relationhip_type + "]->" + source_expr_to_cy_string(simplified_target_source_expr)
+    elif ast[0] == 'where' :
+        ret_str = " WHERE " + ast_to_cypher(ast[1], metadata)
+    elif ast[0] in ops or ast[0] in cons:
+        ret_str = ast_to_cypher(ast[1], metadata) + " " + ast[0] + " " + ast_to_cypher(ast[2], metadata)
+    elif ast[0] == 'path' :
+        ret_str = ast_to_cypher(ast[1], metadata) + "." + ast_to_cypher(ast[2], metadata)
+    elif ast[0] == 'lit' :
+        if type(ast[1]) == int :
+            ret_str = str(ast[1])
+        else :
+            ret_str = ast[1]
+    elif ast[0] == 'id' :
+        ret_str = ast[1]
+    return ret_str
 
 # find relationship from metadata
 def find_target_node_label(from_node, relationship_type, metadata) :
@@ -315,11 +204,9 @@ def find_target_node_label(from_node, relationship_type, metadata) :
             target_node_label =   relationship['to']
     return target_node_label # if not found null string will be returned
 
-# Execute Neo4j
-def execute_neo4j(uri, user, passwd, cypher):
-    neo4j = Neo4j({
-            'uri' : uri,
-            'user' : user,
-            'passwd' : passwd,
-    })
-    return neo4j.executeQuery(cypher)
+# source expr to cypher string
+def source_expr_to_cy_string(source_expr) :
+    source_string = "(" + source_expr[1] + ":" + source_expr[2][1] + ")" 
+    return source_string
+
+
