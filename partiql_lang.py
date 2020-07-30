@@ -135,7 +135,7 @@ class Build_AST():
                 ret_str = ret_str + c
             elif type(c) == lark.tree.Tree :
                 ret_str = ret_str + self.visit(c)
-        return "'" + ret_str + "'"
+        return ret_str
 
     def number(self, tree) :
         return int(tree.children[0] + "")

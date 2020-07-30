@@ -91,7 +91,7 @@ def ast_to_sql(ast) :
         if type(ast[1]) == int :
             ret_str = str(ast[1])
         else :
-            ret_str = ast[1]
+            ret_str = "'" + ast[1] + "'"
     elif ast[0] == 'id' :
         ret_str = ast[1]
     return ret_str
@@ -191,7 +191,7 @@ def ast_to_cypher(ast, metadata) :
         if type(ast[1]) == int :
             ret_str = str(ast[1])
         else :
-            ret_str = ast[1]
+            ret_str = "'" + ast[1] + "'"
     elif ast[0] == 'id' :
         ret_str = ast[1]
     return ret_str
